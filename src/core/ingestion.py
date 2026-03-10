@@ -4,11 +4,14 @@ from typing import List, Generator
 from src.schema import DocumentChunk
 from src.config import settings
 import hashlib
+import json
 
 class FileProcessor :
     
     def __init__(self, directory:Path = settings.DATA_DIR):
         self.directory = directory
+        self.state_path = settings.DATA_DIR / "ingestion_state.json"
+        self.state = self._load_state()
     
     def getfiles(self, extenions: List[str] = [".txt", ".md", ".py"]) -> Generator[Path, None, None] :
         """Recursively yields files with the specified extensions."""
@@ -26,14 +29,27 @@ class FileProcessor :
             return ""
     
     def process_all(self) -> List[DocumentChunk] :
-        """Orchestrates the ingestion of all files."""
+        """Orchestrates the ingestion (of all files) with a dirty check."""
         all_chunks = []
+        files_processed = 0
+
         for file_path in self.get_files() :
             content = self.read_file(file_path)
             if content :
                 # We will delegate the chunking logic to a separate method
                 chunks = self.chunk_text(content, str(file_path))
                 all_chunks.extend(chunks)
+                files_processed += 1
+            else :
+                # In a real system, you might load existing chunks from the DB here
+                continue
+        
+        if files_processed > 0 :
+            self._save_state()
+            print(f"Ingested {files_processed} new or modified files.")
+        else:
+            print("No changes detected. Skipping ingestion.")
+
         return all_chunks
     
     def chunk_text(self, text: str, source: str) -> List[DocumentChunk]:
@@ -79,3 +95,31 @@ class FileProcessor :
             content=content,
             metadata=metadata
         )       
+    
+    def _load_state(self) -> dict:
+        """Loads the last known modification times from a JSON file."""
+        if self.state_path.exists():
+            with open(self.state_path, "r") as f:
+                return json.load(f)
+        return {}
+    
+    def _save_state(self):
+        """Persists the current state to disk."""
+        with open(self.state_path, "w") as f:
+            json.dump(self.state, f, indent=4)
+    
+    def is_dirty(self, file_path: Path) -> bool:
+        """
+        Checks if the file has been modified since the last ingestion.
+        Returns True if it's new or changed.
+        """
+        mtime = file_path.stat().st_mtime
+        last_mtime = self.state.get(str(file_path))
+        
+        if last_mtime is None or mtime > last_mtime:
+            # Update the state in memory
+            self.state[str(file_path)] = mtime
+            return True
+        return False
+    
+
