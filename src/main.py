@@ -1,36 +1,62 @@
+import argparse
+import sys
 from src.config import settings
 from src.core.ingestion import FileProcessor
 from src.core.embedder import Embedder
 from src.core.vector_db import VectorStore
+from src.core.retriever import Retriever
+from src.core.generator import Generator
 
-def run_indexing_pipeline() :
+def main():
+    parser = argparse.ArgumentParser(description="Local Knowledge RAG CLI")
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    # 1. Initialize the system
-    print("--- Initializing Local RAG Indexer ---")
+    # Command: ingest
+    subparsers.add_parser("ingest", help="Scan local files and update the vector database")
+
+    # Command: ask
+    ask_parser = subparsers.add_parser("ask", help="Ask a question based on your local data")
+    ask_parser.add_argument("query", type=str, help="The question you want to ask")
+
+    args = parser.parse_args()
+
+    # Ensure system folders exist
     settings.ensure_directories()
 
-    processorc = FileProcessor()
+    # Initialize core components
     embedder = Embedder()
     vector_db = VectorStore()
 
-    # 2. Ingestion: Find and Chunk Files
-    # This automatically uses the 'is_dirty' check we built
-    print("\n[1/3] Scanning for new/modified documents...")
-    new_chunks = processorc.process_all()
+    if args.command == "ingest":
+        print("--- Running Ingestion Pipeline ---")
+        processor = FileProcessor()
+        new_chunks = processor.process_all()
+        
+        if new_chunks:
+            chunks_with_embeddings = embedder.embed_chunks(new_chunks)
+            vector_db.upsert_chunks(chunks_with_embeddings)
+            print("Successfully updated your knowledge base.")
+        else:
+            print("No new changes detected.")
 
-    if not new_chunks :
-        print("Done. No new data to process.")
-        return
-    
-    # 3. Embedding: Turn text into Math
-    print(f"\n[2/3] Converting {len(new_chunks)} chunks to vectors...")
-    chunks_with_embeddings = embedder.embed_chunks(new_chunks)
+    elif args.command == "ask":
+        # 1. Setup Retrieval
+        retriever = Retriever(embedder, vector_db)
+        # 2. Setup Generation
+        generator = Generator()
+        
+        # 3. The RAG Flow
+        results = retriever.retrieve(args.query)
+        
+        if not results:
+            print("No relevant context found in your local files.")
+            return
 
-    # 4. Storage: Save to the Vector DB
-    print("\n[3/3] Saving to local Vector Database...")
-    vector_db.upsert_chunks(chunks_with_embeddings)
+        prompt = generator.format_prompt(args.query, results)
+        generator.generate_answer_stream(prompt)
 
-    print("\n--- Indexing Complete! Your knowledge base is ready. ---")
+    else:
+        parser.print_help()
 
 if __name__ == "__main__":
-    run_indexing_pipeline()
+    main()
