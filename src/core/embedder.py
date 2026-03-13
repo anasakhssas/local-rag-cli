@@ -28,7 +28,7 @@ class Embedder :
         embeddings = self.model.encode(texts)
 
         # Assign the results back to the objects
-        for i, chunk in enumerate(embeddings) :
+        for i, chunk in enumerate(chunks) :
             chunk.embedding = embeddings[i].tolist()
         
         return chunks

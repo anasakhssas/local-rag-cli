@@ -5,6 +5,7 @@ from src.schema import DocumentChunk
 from src.config import settings
 import hashlib
 import json
+import pypdf
 
 class FileProcessor :
     
@@ -13,7 +14,7 @@ class FileProcessor :
         self.state_path = settings.DATA_DIR / "ingestion_state.json"
         self.state = self._load_state()
     
-    def getfiles(self, extenions: List[str] = [".txt", ".md", ".py"]) -> Generator[Path, None, None] :
+    def getfiles(self, extenions: List[str] = [".txt", ".md", ".pdf"]) -> Generator[Path, None, None] :
         """Recursively yields files with the specified extensions."""
         for path in self.directory.rglob("*") :
             if path.is_file() and path.suffix in extenions :
@@ -22,8 +23,19 @@ class FileProcessor :
     def read_file(self, file_path: Path) -> str :
         """Reads the content of a file."""
         try :
-            with open(file_path, "r", encoding="utf-8") as f:
-                return f.read()
+            if file_path.suffix.lower() == ".pdf":
+                
+                with open(file_path, "rb") as f:
+                    reader = pypdf.PdfReader(f)
+                    text = ""
+                    for page in reader.pages:
+                        extracted = page.extract_text()
+                        if extracted:
+                            text += extracted + "\n"
+                    return text
+            else:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    return f.read()
         except Exception as e:
             print(f"Error reading {file_path}: {e}")
             return ""
@@ -33,7 +45,7 @@ class FileProcessor :
         all_chunks = []
         files_processed = 0
 
-        for file_path in self.get_files() :
+        for file_path in self.getfiles() :
             content = self.read_file(file_path)
             if content :
                 # We will delegate the chunking logic to a separate method
@@ -100,7 +112,10 @@ class FileProcessor :
         """Loads the last known modification times from a JSON file."""
         if self.state_path.exists():
             with open(self.state_path, "r") as f:
-                return json.load(f)
+                try:
+                    return json.load(f)
+                except json.JSONDecodeError:
+                    return {}
         return {}
     
     def _save_state(self):

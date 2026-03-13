@@ -16,7 +16,7 @@ class DocumentChunk :
     metadata: Dict[str, Any] = field(default_factory=dict)
     embedding: Optional[List[float]] = None
 
-    def to_dict(self) -> DeprecationWarning[str, Any] :
+    def to_dict(self) -> Dict[str, Any] :
         "Helper to convert for JSON serialization or DB storage"
         return {
             "id": self.id,
@@ -26,7 +26,7 @@ class DocumentChunk :
         }
     
 @dataclass
-class RetrievialResult :
+class RetrievalResult :
     "Represents a result returned from the vector database"
     chunk: DocumentChunk
     score: float

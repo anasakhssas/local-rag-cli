@@ -29,7 +29,7 @@ class VectorStore:
 
         # 'Upsert' means: If the ID exists, update it. If not, insert it.
         self.collection.upsert(
-            id=ids,
+            ids=ids,
             embeddings=embeddings,
             documents=documents,
             metadatas=metadatas
